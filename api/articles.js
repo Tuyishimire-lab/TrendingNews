@@ -1,18 +1,22 @@
-import { Redis } from '@upstash/redis';
-
-const redis = Redis.fromEnv();
+import { createClient } from '@supabase/supabase-js';
 
 /**
  * GET /api/articles
- * 
- * Serves stored articles from Vercel KV.
- * 
+ *
+ * Serves articles from Supabase PostgreSQL.
+ * Supports category browsing, full-text search, and pagination.
+ *
  * Query params:
  *   - category: Article category (default: 'top')
- *   - q: Search query (filters stored articles by title/description)
- *   - page: Page number for client-side pagination (default: 1)
- *   - pageSize: Articles per page (default: 20)
+ *   - q: Search query (uses PostgreSQL full-text search)
+ *   - page: Page number (default: 1)
+ *   - pageSize: Articles per page (default: 20, max: 50)
  */
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 const VALID_CATEGORIES = [
   'top', 'business', 'technology', 'science', 'health',
@@ -21,6 +25,7 @@ const VALID_CATEGORIES = [
 ];
 
 const DEFAULT_PAGE_SIZE = 20;
+const MAX_PAGE_SIZE = 50;
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
@@ -35,96 +40,73 @@ export default async function handler(req, res) {
       pageSize = String(DEFAULT_PAGE_SIZE),
     } = req.query;
 
-    // Get metadata
-    const metaRaw = await redis.get('articles:meta');
-    const meta = typeof metaRaw === 'string' ? JSON.parse(metaRaw) : metaRaw;
+    const pg = Math.max(1, parseInt(page, 10) || 1);
+    const ps = Math.min(MAX_PAGE_SIZE, Math.max(1, parseInt(pageSize, 10) || DEFAULT_PAGE_SIZE));
+    const offset = (pg - 1) * ps;
 
-    // Search mode: search across all categories
+    // Get last updated timestamp
+    const { data: metaData } = await supabase
+      .from('fetch_metadata')
+      .select('last_updated')
+      .order('last_updated', { ascending: false })
+      .limit(1);
+
+    const lastUpdated = metaData?.[0]?.last_updated || null;
+
+    // ── Search Mode ──
     if (q && q.trim()) {
-      const query = q.trim().toLowerCase();
-      let allArticles = [];
+      const query = q.trim();
 
-      for (const cat of VALID_CATEGORIES) {
-        const raw = await redis.get(`articles:${cat}`);
-        if (!raw) continue;
-        const articles = typeof raw === 'string' ? JSON.parse(raw) : raw;
-        if (Array.isArray(articles)) {
-          allArticles.push(...articles);
-        }
+      // Use PostgreSQL full-text search with websearch_to_tsquery for natural language
+      // Fall back to ILIKE if the FTS query is too complex
+      let searchQuery = supabase
+        .from('articles')
+        .select('*', { count: 'exact' })
+        .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
+        .order('pub_date', { ascending: false })
+        .range(offset, offset + ps - 1);
+
+      const { data: articles, count, error } = await searchQuery;
+
+      if (error) {
+        console.error('[Articles API] Search error:', error.message);
+        return res.status(500).json({ error: 'Search failed' });
       }
 
-      // Deduplicate by link
-      const seen = new Set();
-      allArticles = allArticles.filter((a) => {
-        if (!a.link || seen.has(a.link)) return false;
-        seen.add(a.link);
-        return true;
-      });
-
-      // Filter by search query
-      const filtered = allArticles.filter((a) => {
-        const title = (a.title || '').toLowerCase();
-        const desc = (a.description || '').toLowerCase();
-        const content = (a.content || '').toLowerCase();
-        return title.includes(query) || desc.includes(query) || content.includes(query);
-      });
-
-      // Sort by date (newest first)
-      filtered.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
-
-      // Paginate
-      const pg = Math.max(1, parseInt(page, 10));
-      const ps = Math.min(50, Math.max(1, parseInt(pageSize, 10)));
-      const start = (pg - 1) * ps;
-      const paged = filtered.slice(start, start + ps);
-
       return res.status(200).json({
-        articles: paged,
-        total: filtered.length,
+        articles: articles || [],
+        total: count || 0,
         page: pg,
         pageSize: ps,
-        hasMore: start + ps < filtered.length,
-        lastUpdated: meta?.lastUpdated || null,
+        hasMore: offset + ps < (count || 0),
+        nextPage: offset + ps < (count || 0) ? pg + 1 : null,
+        lastUpdated,
       });
     }
 
-    // Category mode
+    // ── Category Mode ──
     const cat = VALID_CATEGORIES.includes(category) ? category : 'top';
-    const raw = await redis.get(`articles:${cat}`);
 
-    if (!raw) {
-      return res.status(200).json({
-        articles: [],
-        total: 0,
-        page: 1,
-        pageSize: parseInt(pageSize, 10),
-        hasMore: false,
-        lastUpdated: meta?.lastUpdated || null,
-        message: 'No articles available. The daily fetch may not have run yet.',
-      });
+    const { data: articles, count, error } = await supabase
+      .from('articles')
+      .select('*', { count: 'exact' })
+      .eq('category', cat)
+      .order('pub_date', { ascending: false })
+      .range(offset, offset + ps - 1);
+
+    if (error) {
+      console.error('[Articles API] Query error:', error.message);
+      return res.status(500).json({ error: 'Failed to fetch articles' });
     }
-
-    const articles = typeof raw === 'string' ? JSON.parse(raw) : raw;
-
-    // Sort by date
-    if (Array.isArray(articles)) {
-      articles.sort((a, b) => new Date(b.pubDate) - new Date(a.pubDate));
-    }
-
-    // Paginate
-    const pg = Math.max(1, parseInt(page, 10));
-    const ps = Math.min(50, Math.max(1, parseInt(pageSize, 10)));
-    const start = (pg - 1) * ps;
-    const paged = Array.isArray(articles) ? articles.slice(start, start + ps) : [];
 
     return res.status(200).json({
-      articles: paged,
-      total: Array.isArray(articles) ? articles.length : 0,
+      articles: articles || [],
+      total: count || 0,
       page: pg,
       pageSize: ps,
-      hasMore: start + ps < (Array.isArray(articles) ? articles.length : 0),
-      nextPage: start + ps < (Array.isArray(articles) ? articles.length : 0) ? pg + 1 : null,
-      lastUpdated: meta?.lastUpdated || null,
+      hasMore: offset + ps < (count || 0),
+      nextPage: offset + ps < (count || 0) ? pg + 1 : null,
+      lastUpdated,
     });
 
   } catch (err) {

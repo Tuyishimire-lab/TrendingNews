@@ -1,19 +1,22 @@
-import { Redis } from '@upstash/redis';
-
-const redis = Redis.fromEnv();
+import { createClient } from '@supabase/supabase-js';
 
 /**
  * Daily Cron Job — Fetches all articles from NewsData.io
  * across all categories using the full daily credit allocation.
- * 
- * Stores results in Vercel KV organized by category.
- * 
+ *
+ * Stores results in Supabase PostgreSQL with upsert (dedup by link).
+ *
  * Schedule: Once daily at 06:00 UTC (configured in vercel.json)
  * Credits: 200/day, 10 results/request = up to 2000 articles
  */
 
 const NEWSDATA_BASE = 'https://newsdata.io/api/1/latest';
 const API_KEY = process.env.NEWSDATA_API_KEY;
+
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 // Credit allocation per category (total = 200)
 const CATEGORY_CREDITS = {
@@ -83,12 +86,25 @@ async function fetchCategoryArticles(category, maxCredits) {
   return { articles, creditsUsed, nextPage };
 }
 
-export default async function handler(req, res) {
-  // Verify the request is from Vercel Cron or an authorized source
-  const authHeader = req.headers['authorization'];
-  const cronSecret = process.env.CRON_SECRET;
+function mapArticleToRow(article, category) {
+  return {
+    title:       article.title || 'Untitled',
+    link:        article.link,
+    description: article.description || null,
+    content:     article.content || null,
+    image_url:   article.image_url || null,
+    source_name: article.source_name || article.source_id || null,
+    source_icon: article.source_icon || null,
+    source_id:   article.source_id || null,
+    pub_date:    article.pubDate || null,
+    category:    category,
+    country:     Array.isArray(article.country) ? article.country : null,
+    language:    article.language || 'en',
+    fetched_at:  new Date().toISOString(),
+  };
+}
 
-  // Allow POST requests (manual trigger) and GET requests from Vercel Cron
+export default async function handler(req, res) {
   if (req.method !== 'GET' && req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -97,7 +113,22 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'NEWSDATA_API_KEY not configured' });
   }
 
+  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return res.status(500).json({ error: 'Supabase credentials not configured' });
+  }
+
   console.log(`[Cron] Starting daily news fetch at ${new Date().toISOString()}`);
+
+  // Clean up articles older than 3 days
+  const threeDaysAgo = new Date(Date.now() - 3 * 86400 * 1000).toISOString();
+  const { error: deleteErr } = await supabase
+    .from('articles')
+    .delete()
+    .lt('fetched_at', threeDaysAgo);
+
+  if (deleteErr) {
+    console.warn('[Cron] Cleanup error:', deleteErr.message);
+  }
 
   const results = {};
   let totalArticles = 0;
@@ -105,43 +136,61 @@ export default async function handler(req, res) {
 
   for (const category of CATEGORIES) {
     const maxCredits = CATEGORY_CREDITS[category];
-
     console.log(`[Cron] Fetching ${category} (max ${maxCredits} credits)...`);
+
     const { articles, creditsUsed } = await fetchCategoryArticles(category, maxCredits);
 
-    // Deduplicate by link
-    const seen = new Set();
-    const unique = articles.filter((a) => {
-      if (!a.link || seen.has(a.link)) return false;
-      seen.add(a.link);
-      return true;
-    });
+    // Filter out articles without a link (required for dedup)
+    const valid = articles.filter((a) => a.link);
 
-    // Store in KV
-    await redis.set(`articles:${category}`, JSON.stringify(unique), { ex: 86400 * 2 }); // TTL: 2 days
+    // Map to DB rows
+    const rows = valid.map((a) => mapArticleToRow(a, category));
 
-    results[category] = { count: unique.length, creditsUsed };
-    totalArticles += unique.length;
+    if (rows.length > 0) {
+      // Upsert in batches of 50
+      for (let i = 0; i < rows.length; i += 50) {
+        const batch = rows.slice(i, i + 50);
+        const { error } = await supabase
+          .from('articles')
+          .upsert(batch, {
+            onConflict: 'link',
+            ignoreDuplicates: false,
+          });
+
+        if (error) {
+          console.error(`[Cron] Upsert error for ${category}:`, error.message);
+        }
+      }
+    }
+
+    results[category] = { count: rows.length, creditsUsed };
+    totalArticles += rows.length;
     totalCredits += creditsUsed;
 
-    console.log(`[Cron] ${category}: ${unique.length} articles (${creditsUsed} credits)`);
+    console.log(`[Cron] ${category}: ${rows.length} articles (${creditsUsed} credits)`);
   }
 
-  // Store metadata
-  const meta = {
-    lastUpdated: new Date().toISOString(),
-    totalArticles,
-    totalCredits,
-    categories: results,
-  };
+  // Store fetch metadata
+  const { error: metaErr } = await supabase
+    .from('fetch_metadata')
+    .insert({
+      last_updated: new Date().toISOString(),
+      total_articles: totalArticles,
+      total_credits: totalCredits,
+      categories: results,
+    });
 
-  await redis.set('articles:meta', JSON.stringify(meta), { ex: 86400 * 2 });
+  if (metaErr) {
+    console.warn('[Cron] Metadata insert error:', metaErr.message);
+  }
 
   console.log(`[Cron] Complete! ${totalArticles} articles fetched using ${totalCredits} credits.`);
 
   return res.status(200).json({
     success: true,
     message: `Fetched ${totalArticles} articles using ${totalCredits} credits`,
-    meta,
+    totalArticles,
+    totalCredits,
+    categories: results,
   });
 }

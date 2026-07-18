@@ -212,7 +212,7 @@
             ${escapeHtml(article.source_name || article.source_id || 'Unknown')}
           </span>
           <span>•</span>
-          <time>${formatDate(article.pubDate)}</time>
+          <time>${formatDate(article.pub_date)}</time>
         </div>
       </div>
     `;
@@ -245,7 +245,7 @@
               ${article.source_icon ? `<img src="${escapeHtml(article.source_icon)}" alt="" onerror="this.style.display='none'">` : ''}
               ${escapeHtml(article.source_name || article.source_id || 'Unknown')}
             </span>
-            <time class="article-card__date">${formatDate(article.pubDate)}</time>
+            <time class="article-card__date">${formatDate(article.pub_date)}</time>
           </div>
         </div>
       </article>
@@ -345,7 +345,7 @@
     dom.modalSourceName.textContent = article.source_name || article.source_id || 'Unknown Source';
 
     // Date
-    dom.modalDate.textContent = formatDate(article.pubDate);
+    dom.modalDate.textContent = formatDate(article.pub_date);
 
     // Content
     dom.modalTitle.textContent = article.title || '';
