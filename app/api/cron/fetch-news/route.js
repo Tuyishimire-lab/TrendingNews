@@ -4,14 +4,13 @@ import { createServiceClient } from '@/lib/supabase';
 /**
  * GET & POST /api/cron/fetch-news
  *
- * Daily cron job that fetches articles from 3 free news APIs:
- *   1. NewsData.io  — 200 credits/day
- *   2. Currents API  — 1,000 req/day
- *   3. The Guardian  — 500 req/day
+ * Daily cron job that fetches articles from 3 free news APIs,
+ * then runs AI analysis on the newest articles.
  *
- * All articles are normalized to a unified schema and upserted to Supabase.
- * Schedule: Daily at 06:00 UTC (configured in vercel.json)
+ * Optimized to complete within Vercel's 60s timeout.
  */
+
+export const maxDuration = 60;
 
 /* ═══════════════════════════════════════════════════════════
    Category Mappings
@@ -334,20 +333,20 @@ async function handleFetch() {
   let aiProcessed = 0;
 
   if (GROQ_API_KEY) {
-    // 2a. Batch-process unprocessed articles (up to 150)
+    // 2a. Batch-process unprocessed articles (up to 50 for speed)
     const { data: unprocessed } = await supabase
       .from('articles')
       .select('id, title, description, content, category')
       .eq('ai_processed', false)
       .order('pub_date', { ascending: false })
-      .limit(150);
+      .limit(50);
 
     if (unprocessed?.length > 0) {
       console.log(`[AI] Processing ${unprocessed.length} articles...`);
 
-      // Process in batches of 5
-      for (let i = 0; i < unprocessed.length; i += 5) {
-        const batch = unprocessed.slice(i, i + 5);
+      // Process in batches of 10 (fewer API calls = faster)
+      for (let i = 0; i < unprocessed.length; i += 10) {
+        const batch = unprocessed.slice(i, i + 10);
         try {
           const articlesBlock = batch.map((a, idx) =>
             `ARTICLE_${idx + 1}:\nTitle: ${a.title}\nDescription: ${(a.description || '').substring(0, 200)}`
@@ -422,9 +421,10 @@ Respond ONLY with a valid JSON array (no markdown, no code fences). Each element
         .eq('ai_processed', false);
     }
 
-    // 2b. Generate category briefings
+    // 2b. Generate category briefings (top 6 categories for speed)
     console.log('[AI] Generating category briefings...');
-    for (const cat of UNIFIED_CATEGORIES) {
+    const KEY_CATEGORIES = ['top', 'business', 'technology', 'world', 'sports', 'politics'];
+    for (const cat of KEY_CATEGORIES) {
       try {
         const { data: topArticles } = await supabase
           .from('articles')
