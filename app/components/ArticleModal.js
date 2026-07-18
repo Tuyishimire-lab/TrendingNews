@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect } from 'react';
 import { formatDate } from '@/lib/utils';
 
-export default function ArticleModal({ article, onClose }) {
-  const [summary, setSummary] = useState(null);
-  const [sentiment, setSentiment] = useState(null);
-  const [loadingSummary, setLoadingSummary] = useState(false);
-  const [loadingSentiment, setLoadingSentiment] = useState(false);
+const SENTIMENT_MAP = {
+  positive: { emoji: '😊', label: 'Positive', cls: 'positive' },
+  negative: { emoji: '😟', label: 'Negative', cls: 'negative' },
+  neutral: { emoji: '😐', label: 'Neutral', cls: 'neutral' },
+};
 
+export default function ArticleModal({ article, onClose }) {
   // Close on escape
   useEffect(() => {
     const handleKey = (e) => { if (e.key === 'Escape') onClose(); };
@@ -20,50 +21,11 @@ export default function ArticleModal({ article, onClose }) {
     };
   }, [onClose]);
 
-  const handleSummarize = useCallback(async () => {
-    if (summary || loadingSummary) return;
-    setLoadingSummary(true);
-    try {
-      const res = await fetch('/api/ai/summarize', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: article.title,
-          description: article.description,
-          content: article.content,
-          source: article.source_name,
-        }),
-      });
-      if (res.ok) setSummary(await res.json());
-    } catch { /* silently fail */ }
-    setLoadingSummary(false);
-  }, [article, summary, loadingSummary]);
-
-  const handleSentiment = useCallback(async () => {
-    if (sentiment || loadingSentiment) return;
-    setLoadingSentiment(true);
-    try {
-      const res = await fetch('/api/ai/sentiment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: article.title,
-          description: article.description,
-          content: article.content,
-        }),
-      });
-      if (res.ok) setSentiment(await res.json());
-    } catch { /* silently fail */ }
-    setLoadingSentiment(false);
-  }, [article, sentiment, loadingSentiment]);
-
   if (!article) return null;
 
   const cat = Array.isArray(article.category) ? article.category[0] : (article.category || 'top');
-  const sentClass = sentiment?.sentiment === 'positive' ? 'positive'
-    : sentiment?.sentiment === 'negative' ? 'negative' : 'neutral';
-  const sentEmoji = sentiment?.sentiment === 'positive' ? '😊'
-    : sentiment?.sentiment === 'negative' ? '😟' : '😐';
+  const sent = SENTIMENT_MAP[article.ai_sentiment];
+  const confidencePct = article.ai_sentiment_score ? Math.round(article.ai_sentiment_score * 100) : null;
 
   return (
     <div className="modal-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -103,66 +65,52 @@ export default function ArticleModal({ article, onClose }) {
           <h1 className="modal__title">{article.title}</h1>
           <p className="modal__description">{article.description || article.content || 'No description available.'}</p>
 
-          {/* AI Section */}
-          <div className="modal__ai-section">
-            <div className="modal__ai-header">
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4zm-2 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm4 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>
-              AI Insights
-            </div>
-            <div className="modal__ai-actions">
-              <button
-                className={`ai-btn${loadingSummary ? ' loading' : ''}${summary ? ' done' : ''}`}
-                onClick={handleSummarize}
-                disabled={loadingSummary || !!summary}
-              >
-                ✨ {summary ? 'Summarized' : 'Summarize'}
-              </button>
-              <button
-                className={`ai-btn${loadingSentiment ? ' loading' : ''}${sentiment ? ' done' : ''}`}
-                onClick={handleSentiment}
-                disabled={loadingSentiment || !!sentiment}
-              >
-                🎭 {sentiment ? 'Analyzed' : 'Sentiment'}
-              </button>
-            </div>
-
-            {/* Summary Result */}
-            {summary && (
-              <div className="ai-result">
-                <div className="ai-result__header">
-                  <span className="ai-result__label">AI Summary</span>
-                  <span className="ai-result__powered">Powered by Llama 3.3</span>
-                </div>
-                <div className="ai-result__content">
-                  <p>{summary.summary}</p>
-                  {summary.keyTakeaways?.length > 0 && (
-                    <ul>
-                      {summary.keyTakeaways.map((t, i) => (
-                        <li key={i}><strong>→</strong> {t}</li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
+          {/* Pre-computed AI Section */}
+          {(article.ai_summary || sent || article.ai_tags?.length > 0) && (
+            <div className="modal__ai-section">
+              <div className="modal__ai-header">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4zm-2 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm4 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>
+                AI Analysis
+                <span className="modal__ai-powered">Powered by Llama 3.3</span>
               </div>
-            )}
 
-            {/* Sentiment Result */}
-            {sentiment && (
-              <div className="ai-result" style={{ marginTop: summary ? '0.75rem' : '1rem' }}>
-                <div className="ai-result__header">
-                  <span className="ai-result__label">Sentiment Analysis</span>
-                  <span className="ai-result__powered">Powered by Llama 3.3</span>
-                </div>
-                <div className="ai-result__content">
-                  <div className={`sentiment-badge sentiment-badge--${sentClass}`}>
-                    {sentEmoji} {sentiment.sentiment?.charAt(0).toUpperCase() + sentiment.sentiment?.slice(1)}
-                    {sentiment.confidence && ` · ${Math.round(sentiment.confidence * 100)}% confidence`}
+              {/* AI Summary */}
+              {article.ai_summary && (
+                <div className="ai-result">
+                  <div className="ai-result__header">
+                    <span className="ai-result__label">✨ AI Summary</span>
                   </div>
-                  <p>{sentiment.reasoning}</p>
+                  <div className="ai-result__content">
+                    <p>{article.ai_summary}</p>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+
+              {/* Sentiment */}
+              {sent && (
+                <div className="ai-result" style={{ marginTop: '0.75rem' }}>
+                  <div className="ai-result__header">
+                    <span className="ai-result__label">🎭 Sentiment</span>
+                  </div>
+                  <div className="ai-result__content">
+                    <div className={`sentiment-badge sentiment-badge--${sent.cls}`}>
+                      {sent.emoji} {sent.label}
+                      {confidencePct && ` · ${confidencePct}% confidence`}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Tags */}
+              {article.ai_tags?.length > 0 && (
+                <div className="modal__ai-tags">
+                  {article.ai_tags.map((tag, i) => (
+                    <span key={i} className="article-card__tag">{tag}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Read full article */}
           <a className="modal__read-full" href={article.link} target="_blank" rel="noopener noreferrer">

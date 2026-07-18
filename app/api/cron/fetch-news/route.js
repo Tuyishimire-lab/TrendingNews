@@ -272,6 +272,7 @@ function delay(ms) {
 
 async function handleFetch() {
   const supabase = createServiceClient();
+  const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
   console.log(`[Cron] Starting multi-API news fetch at ${new Date().toISOString()}`);
 
@@ -313,8 +314,7 @@ async function handleFetch() {
     }
   }
 
-  // Store fetch metadata
-  const meta = {
+  await supabase.from('fetch_metadata').insert({
     last_updated: new Date().toISOString(),
     total_articles: upsertedCount,
     total_credits: 0,
@@ -323,26 +323,254 @@ async function handleFetch() {
       currents: currentsArticles.length,
       guardian: guardianArticles.length,
     },
-  };
+  });
 
-  await supabase.from('fetch_metadata').insert(meta);
+  console.log(`[Cron] Upserted ${upsertedCount} articles. Starting AI processing...`);
 
-  console.log(`[Cron] Complete! Upserted ${upsertedCount} articles.`);
-  console.log(`[Cron] Breakdown — NewsData: ${newsDataArticles.length}, Currents: ${currentsArticles.length}, Guardian: ${guardianArticles.length}`);
+  // ═══════════════════════════════════════════════════════════
+  // PHASE 2: AI Processing (Groq)
+  // ═══════════════════════════════════════════════════════════
+
+  let aiProcessed = 0;
+
+  if (GROQ_API_KEY) {
+    // 2a. Batch-process unprocessed articles (up to 150)
+    const { data: unprocessed } = await supabase
+      .from('articles')
+      .select('id, title, description, content, category')
+      .eq('ai_processed', false)
+      .order('pub_date', { ascending: false })
+      .limit(150);
+
+    if (unprocessed?.length > 0) {
+      console.log(`[AI] Processing ${unprocessed.length} articles...`);
+
+      // Process in batches of 5
+      for (let i = 0; i < unprocessed.length; i += 5) {
+        const batch = unprocessed.slice(i, i + 5);
+        try {
+          const articlesBlock = batch.map((a, idx) =>
+            `ARTICLE_${idx + 1}:\nTitle: ${a.title}\nDescription: ${(a.description || '').substring(0, 200)}`
+          ).join('\n\n');
+
+          const res = await fetch(GROQ_API_URL, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${GROQ_API_KEY}`,
+            },
+            body: JSON.stringify({
+              model: 'llama-3.3-70b-versatile',
+              messages: [
+                {
+                  role: 'system',
+                  content: `You are a news analysis AI. For each article, provide a summary, sentiment, and tags.
+
+Respond ONLY with a valid JSON array (no markdown, no code fences). Each element must have:
+{
+  "index": 1,
+  "summary": "A concise 1-2 sentence summary.",
+  "sentiment": "positive" | "negative" | "neutral",
+  "confidence": 0.85,
+  "tags": ["tag1", "tag2", "tag3"]
+}`,
+                },
+                { role: 'user', content: `Analyze these ${batch.length} articles:\n\n${articlesBlock}` },
+              ],
+              temperature: 0.2,
+              max_tokens: 1000,
+            }),
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            const raw = data.choices?.[0]?.message?.content || '';
+            try {
+              const jsonMatch = raw.match(/\[[\s\S]*\]/);
+              const results = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
+
+              for (const r of results) {
+                const idx = (r.index || 1) - 1;
+                if (idx >= 0 && idx < batch.length) {
+                  await supabase
+                    .from('articles')
+                    .update({
+                      ai_summary: r.summary || null,
+                      ai_sentiment: r.sentiment || 'neutral',
+                      ai_sentiment_score: typeof r.confidence === 'number' ? r.confidence : 0.5,
+                      ai_tags: Array.isArray(r.tags) ? r.tags.slice(0, 5) : [],
+                      ai_processed: true,
+                    })
+                    .eq('id', batch[idx].id);
+                  aiProcessed++;
+                }
+              }
+            } catch { /* parse error, skip batch */ }
+          }
+          await delay(200); // Rate limit
+        } catch (err) {
+          console.error(`[AI] Batch error:`, err.message);
+        }
+      }
+
+      // Mark remaining as processed to avoid re-trying
+      const processedIds = unprocessed.map((a) => a.id);
+      await supabase
+        .from('articles')
+        .update({ ai_processed: true })
+        .in('id', processedIds)
+        .eq('ai_processed', false);
+    }
+
+    // 2b. Generate category briefings
+    console.log('[AI] Generating category briefings...');
+    for (const cat of UNIFIED_CATEGORIES) {
+      try {
+        const { data: topArticles } = await supabase
+          .from('articles')
+          .select('title, ai_summary')
+          .eq('category', cat)
+          .order('pub_date', { ascending: false })
+          .limit(15);
+
+        if (!topArticles?.length) continue;
+
+        const headlines = topArticles.map((a, i) =>
+          `${i + 1}. ${a.title}${a.ai_summary ? ` — ${a.ai_summary}` : ''}`
+        ).join('\n');
+
+        const res = await fetch(GROQ_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${GROQ_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [
+              {
+                role: 'system',
+                content: `You are a news briefing AI. Generate a concise daily briefing.
+
+Respond ONLY with valid JSON (no markdown, no code fences):
+{
+  "briefing": "3-4 sentence overview of the most important stories.",
+  "key_points": ["Key point 1", "Key point 2", "Key point 3"],
+  "mood": "A 2-3 word mood descriptor like 'Cautiously Optimistic' or 'Tense & Fast-Moving'"
+}`,
+              },
+              { role: 'user', content: `Generate today's ${cat} news briefing from these headlines:\n\n${headlines}` },
+            ],
+            temperature: 0.3,
+            max_tokens: 400,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const raw = data.choices?.[0]?.message?.content || '';
+          try {
+            const jsonMatch = raw.match(/\{[\s\S]*\}/);
+            const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
+
+            await supabase
+              .from('briefings')
+              .upsert({
+                category: cat,
+                briefing_text: parsed.briefing || raw,
+                key_points: parsed.key_points || [],
+                mood: parsed.mood || 'Neutral',
+                generated_at: new Date().toISOString(),
+              }, { onConflict: 'category' });
+          } catch { /* skip */ }
+        }
+        await delay(200);
+      } catch (err) {
+        console.error(`[AI] Briefing error for ${cat}:`, err.message);
+      }
+    }
+
+    // 2c. Generate trending topics
+    console.log('[AI] Detecting trending topics...');
+    try {
+      const { data: recentArticles } = await supabase
+        .from('articles')
+        .select('title')
+        .order('pub_date', { ascending: false })
+        .limit(60);
+
+      if (recentArticles?.length > 0) {
+        const titles = recentArticles.map((a, i) => `${i + 1}. ${a.title}`).join('\n');
+
+        const res = await fetch(GROQ_API_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${GROQ_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: 'llama-3.3-70b-versatile',
+            messages: [
+              {
+                role: 'system',
+                content: `You are a trend analyst. Identify the top trending topics from news headlines.
+
+Respond ONLY with a valid JSON array (no markdown, no code fences):
+[
+  { "topic": "Short Topic Name", "description": "One sentence explaining the trend.", "article_count": 5 }
+]
+Return 8-10 topics, ordered by relevance/frequency.`,
+              },
+              { role: 'user', content: `Identify trending topics from these headlines:\n\n${titles}` },
+            ],
+            temperature: 0.3,
+            max_tokens: 600,
+          }),
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          const raw = data.choices?.[0]?.message?.content || '';
+          try {
+            const jsonMatch = raw.match(/\[[\s\S]*\]/);
+            const topics = JSON.parse(jsonMatch ? jsonMatch[0] : raw);
+
+            // Clear old and insert new
+            await supabase.from('trending_topics').delete().gte('id', 0);
+            for (const t of topics) {
+              await supabase.from('trending_topics').insert({
+                topic: t.topic,
+                description: t.description || '',
+                article_count: t.article_count || 0,
+                generated_at: new Date().toISOString(),
+              });
+            }
+          } catch { /* skip */ }
+        }
+      }
+    } catch (err) {
+      console.error('[AI] Trending error:', err.message);
+    }
+
+    console.log(`[AI] Complete! Processed ${aiProcessed} articles.`);
+  } else {
+    console.warn('[AI] No GROQ_API_KEY, skipping AI processing.');
+  }
 
   return NextResponse.json({
     success: true,
-    message: `Fetched ${upsertedCount} unique articles from 3 APIs`,
+    message: `Fetched ${upsertedCount} articles, AI-processed ${aiProcessed}`,
     breakdown: {
       newsdata: newsDataArticles.length,
       currents: currentsArticles.length,
       guardian: guardianArticles.length,
     },
-    totalRaw: allArticles.length,
-    totalUnique: unique.length,
     totalUpserted: upsertedCount,
+    aiProcessed,
   });
 }
+
+const GROQ_API_URL = 'https://api.groq.com/openai/v1/chat/completions';
 
 export async function GET() { return handleFetch(); }
 export async function POST() { return handleFetch(); }

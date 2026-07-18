@@ -5,6 +5,10 @@ import Header from './components/Header';
 import CategoryBar from './components/CategoryBar';
 import ArticleGrid from './components/ArticleGrid';
 import ArticleModal from './components/ArticleModal';
+import AIBriefing from './components/AIBriefing';
+import AIChatPanel from './components/AIChatPanel';
+import TrendingTopics from './components/TrendingTopics';
+import SentimentPulse from './components/SentimentPulse';
 import { useToast } from './components/ToastProvider';
 
 export default function Home() {
@@ -19,6 +23,7 @@ export default function Home() {
   const [lastUpdated, setLastUpdated] = useState(null);
   const [selectedArticle, setSelectedArticle] = useState(null);
   const [initialized, setInitialized] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
 
   // Fetch articles by category
   const fetchArticles = useCallback(async (cat, pg = 1, append = false) => {
@@ -86,15 +91,20 @@ export default function Home() {
 
   // Refresh
   const handleRefresh = useCallback(async () => {
-    showToast('Refreshing articles...', 'info');
+    showToast('Fetching & analyzing articles with AI...', 'info');
     try {
       await fetch('/api/cron/fetch-news', { method: 'POST' });
       await fetchArticles(category);
-      showToast('Articles refreshed!', 'success');
+      showToast('Articles refreshed with AI insights!', 'success');
     } catch {
       showToast('Refresh failed. Daily limit may be reached.', 'error');
     }
   }, [category, fetchArticles, showToast]);
+
+  // Trending topic click → search
+  const handleTopicClick = useCallback((topic) => {
+    searchArticles(topic);
+  }, [searchArticles]);
 
   // Logo click
   const handleLogoClick = useCallback(() => {
@@ -109,11 +119,17 @@ export default function Home() {
         onRefresh={handleRefresh}
         onLogoClick={handleLogoClick}
       />
+      <TrendingTopics onTopicClick={handleTopicClick} />
       <CategoryBar
         activeCategory={category}
         onSelect={handleCategoryChange}
       />
       <main className="main">
+        {/* AI Briefing + Sentiment Pulse */}
+        <div className="ai-dashboard">
+          <AIBriefing category={category} />
+          <SentimentPulse />
+        </div>
         <ArticleGrid
           articles={articles}
           isLoading={isLoading}
@@ -125,6 +141,18 @@ export default function Home() {
           lastUpdated={lastUpdated}
         />
       </main>
+
+      {/* AI Chat */}
+      <button
+        className="chat-fab"
+        onClick={() => setChatOpen(true)}
+        aria-label="Open AI Chat"
+      >
+        <span className="chat-fab__icon">💬</span>
+        <span className="chat-fab__pulse" />
+      </button>
+      <AIChatPanel isOpen={chatOpen} onClose={() => setChatOpen(false)} />
+
       {selectedArticle && (
         <ArticleModal
           article={selectedArticle}
