@@ -66,7 +66,7 @@ export default function ArticleModal({ article, onClose }) {
           <p className="modal__description">{article.description || article.content || 'No description available.'}</p>
 
           {/* Pre-computed AI Section */}
-          {(article.ai_summary || sent || article.ai_tags?.length > 0) && (
+          {(article.ai_summary || sent || article.ai_tags?.length > 0) ? (
             <div className="modal__ai-section">
               <div className="modal__ai-header">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4zm-2 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm4 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>
@@ -109,6 +109,46 @@ export default function ArticleModal({ article, onClose }) {
                   ))}
                 </div>
               )}
+            </div>
+          ) : (
+            <div className="modal__ai-section">
+              <div className="modal__ai-header">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2a4 4 0 0 1 4 4v1h2a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h2V6a4 4 0 0 1 4-4zm-2 11a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm4 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2z"/></svg>
+                AI Insights (On-Demand)
+                <span className="modal__ai-powered">Powered by Llama 3.3</span>
+              </div>
+              <div className="modal__ai-actions" style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                <button
+                  className="ai-btn"
+                  onClick={async (e) => {
+                    const btn = e.target;
+                    btn.innerText = 'Summarizing...';
+                    btn.disabled = true;
+                    try {
+                      const res = await fetch('/api/ai/summarize', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          title: article.title,
+                          description: article.description,
+                          content: article.content,
+                          source: article.source_name,
+                        }),
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        article.ai_summary = data.summary;
+                        btn.innerText = 'Summarized ✨';
+                      }
+                    } catch { btn.innerText = 'Error'; }
+                  }}
+                >
+                  ✨ Summarize
+                </button>
+              </div>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)', marginTop: '0.5rem' }}>
+                This article hasn't been pre-processed by the AI yet.
+              </p>
             </div>
           )}
 
