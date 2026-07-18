@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
+import { createPublicClient } from '@/lib/supabase';
 
 /**
  * GET /api/articles
@@ -22,7 +22,7 @@ export async function GET(request) {
   const pageSize = Math.min(50, Math.max(1, parseInt(searchParams.get('pageSize') || '20', 10)));
   const offset = (page - 1) * pageSize;
 
-  const supabase = createServerClient();
+  const supabase = createPublicClient();
 
   // Get last updated timestamp
   const { data: metaData } = await supabase

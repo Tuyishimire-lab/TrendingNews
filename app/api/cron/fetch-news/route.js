@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase';
+import { createServiceClient } from '@/lib/supabase';
 
 /**
  * GET & POST /api/cron/fetch-news
@@ -80,7 +80,7 @@ async function handleFetch() {
     return NextResponse.json({ error: 'NEWSDATA_API_KEY not configured' }, { status: 500 });
   }
 
-  const supabase = createServerClient();
+  const supabase = createServiceClient();
 
   // Clean up articles older than 3 days
   const threeDaysAgo = new Date(Date.now() - 3 * 86400 * 1000).toISOString();
