@@ -265,6 +265,39 @@ function normalizeArticle(raw, source, category) {
    Handler
    ═══════════════════════════════════════════════════════════ */
 
+function getTitleCleanedWords(title) {
+  if (!title) return [];
+  const stopwords = new Set(['the', 'a', 'an', 'and', 'or', 'but', 'is', 'are', 'was', 'were', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by', 'about', 'as', 'that', 'this', 'these', 'those', 'it', 'its', 'us', 'new', 'says', 'after', 'first', 'over', 'from', 'out', 'up', 'more', 'how', 'who', 'why', 'what']);
+  return title
+    .toLowerCase()
+    .replace(/[^\w\s]/g, '')
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !stopwords.has(w));
+}
+
+function areTitlesSimilar(title1, title2) {
+  const w1 = getTitleCleanedWords(title1);
+  const w2 = getTitleCleanedWords(title2);
+  if (w1.length === 0 || w2.length === 0) return false;
+
+  const set1 = new Set(w1);
+  const set2 = new Set(w2);
+
+  let matchCount = 0;
+  for (const word of set1) {
+    for (const otherWord of set2) {
+      if (word === otherWord || word.startsWith(otherWord) || otherWord.startsWith(word)) {
+        matchCount++;
+        break;
+      }
+    }
+  }
+
+  const unionSize = set1.size + set2.size - matchCount;
+  const similarity = matchCount / (unionSize || 1);
+  return similarity > 0.4 || matchCount >= 4;
+}
+
 function delay(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -288,15 +321,41 @@ async function handleFetch() {
 
   const allArticles = [...newsDataArticles, ...currentsArticles, ...guardianArticles];
 
-  // Deduplicate by link
-  const seen = new Set();
+  // Fetch existing article titles from database to prevent inserting duplicates of existing articles
+  const { data: existingArticles } = await supabase
+    .from('articles')
+    .select('title')
+    .order('pub_date', { ascending: false })
+    .limit(300);
+
+  const dbTitles = (existingArticles || []).map(a => a.title).filter(Boolean);
+
+  // Deduplicate by link, ensure image exists, and remove semantically similar articles
+  const seenLinks = new Set();
+  const acceptedTitles = [...dbTitles]; // Keep track of all titles we've accepted so far
+
   const unique = allArticles.filter((a) => {
-    if (!a || !a.link || seen.has(a.link)) return false;
-    seen.add(a.link);
+    if (!a || !a.link || seenLinks.has(a.link)) return false;
+    
+    // Require image URL
+    if (!a.image_url || a.image_url.trim() === '') return false;
+
+    // Check if title is semantically similar to any accepted or DB article
+    const isDuplicate = acceptedTitles.some((existingTitle) => 
+      areTitlesSimilar(a.title, existingTitle)
+    );
+
+    if (isDuplicate) {
+      console.log(`[Deduplicate] Skipping similar article: "${a.title}"`);
+      return false;
+    }
+
+    seenLinks.add(a.link);
+    acceptedTitles.push(a.title);
     return true;
   });
 
-  console.log(`[Cron] Total: ${allArticles.length} raw → ${unique.length} unique articles`);
+  console.log(`[Cron] Total: ${allArticles.length} raw → ${unique.length} unique, image-enabled, non-duplicate articles`);
 
   // Upsert in batches of 100
   let upsertedCount = 0;
