@@ -371,13 +371,15 @@ Respond ONLY with a valid JSON array (no markdown, no code fences). Each element
   "summary": "A detailed 3-4 sentence paragraph highlighting key facts, background context, and overall significance.",
   "sentiment": "positive" | "negative" | "neutral",
   "confidence": 0.85,
-  "tags": ["tag1", "tag2", "tag3"]
-}`,
+  "tags": ["tag1", "tag2", "tag3"],
+  "importance": 8
+}
+Note: "importance" is an integer from 1 to 10 rating the news value, impact, or significance of the article. Respond ONLY with the JSON array.`,
                 },
                 { role: 'user', content: `Analyze these ${batch.length} articles:\n\n${articlesBlock}` },
               ],
               temperature: 0.2,
-              max_tokens: 1000,
+              max_tokens: 1200,
             }),
           });
 
@@ -399,6 +401,7 @@ Respond ONLY with a valid JSON array (no markdown, no code fences). Each element
                       ai_sentiment_score: typeof r.confidence === 'number' ? r.confidence : 0.5,
                       ai_tags: Array.isArray(r.tags) ? r.tags.slice(0, 5) : [],
                       ai_processed: true,
+                      ai_importance_score: typeof r.importance === 'number' ? r.importance : 5,
                     })
                     .eq('id', batch[idx].id);
                   aiProcessed++;

@@ -276,11 +276,24 @@ body::before {
   background: linear-gradient(135deg, var(--bg-surface), var(--bg-elevated)); color: var(--text-tertiary);
 }
 .article-card__category {
-  position: absolute; top: 0.5rem; left: 0.5rem; padding: 3px 10px;
+  padding: 3px 10px;
   background: rgba(6, 8, 13, 0.7); backdrop-filter: blur(8px);
   border-radius: var(--radius-full); font-size: 0.65rem; font-weight: 600;
   text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-secondary);
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.article-card__importance {
+  padding: 3px 8px;
+  background: rgba(139, 92, 246, 0.25);
+  border: 1px solid rgba(139, 92, 246, 0.45);
+  backdrop-filter: blur(8px);
+  border-radius: var(--radius-full);
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #c4b5fd;
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 .article-card__body { padding: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
 .article-card__title {

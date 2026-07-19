@@ -41,6 +41,7 @@ export async function GET(request) {
         .from('articles')
         .select('*', { count: 'exact' })
         .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
+        .order('ai_importance_score', { ascending: false, nullsFirst: false })
         .order('pub_date', { ascending: false })
         .range(offset, offset + pageSize - 1);
 
@@ -65,6 +66,7 @@ export async function GET(request) {
       .from('articles')
       .select('*', { count: 'exact' })
       .eq('category', cat)
+      .order('ai_importance_score', { ascending: false, nullsFirst: false })
       .order('pub_date', { ascending: false })
       .range(offset, offset + pageSize - 1);
 

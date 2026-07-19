@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS articles (
   ai_sentiment      TEXT,            -- 'positive','negative','neutral'
   ai_sentiment_score REAL,           -- 0.0 to 1.0
   ai_tags           TEXT[],          -- ['topic1','topic2','topic3']
-  ai_processed      BOOLEAN DEFAULT FALSE
+  ai_processed      BOOLEAN DEFAULT FALSE,
+  ai_importance_score INTEGER         -- 1 to 10 rating the news value/significance
 );
 
 -- Indexes
@@ -33,6 +34,7 @@ CREATE INDEX IF NOT EXISTS idx_articles_pub_date ON articles(pub_date DESC);
 CREATE INDEX IF NOT EXISTS idx_articles_fetched_at ON articles(fetched_at DESC);
 CREATE INDEX IF NOT EXISTS idx_articles_ai_processed ON articles(ai_processed);
 CREATE INDEX IF NOT EXISTS idx_articles_ai_sentiment ON articles(ai_sentiment);
+CREATE INDEX IF NOT EXISTS idx_articles_ai_importance ON articles(ai_importance_score DESC NULLS LAST);
 
 -- Full-text search
 ALTER TABLE articles ADD COLUMN IF NOT EXISTS fts tsvector

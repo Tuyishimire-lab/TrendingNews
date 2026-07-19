@@ -32,6 +32,11 @@ export default function ArticleCard({ article, onClick }) {
         )}
         <div className="article-card__badges">
           {cat && <span className="article-card__category">{cat}</span>}
+          {article.ai_importance_score && (
+            <span className="article-card__importance" title={`AI Impact Grade: ${article.ai_importance_score}/10`}>
+              🔥 {article.ai_importance_score}
+            </span>
+          )}
           {sent && (
             <span className={`article-card__sentiment article-card__sentiment--${sent.cls}`}>
               {sent.emoji}
