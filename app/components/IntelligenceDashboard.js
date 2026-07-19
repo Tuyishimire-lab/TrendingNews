@@ -113,35 +113,34 @@ export default function IntelligenceDashboard() {
 
   return (
     <div className="intelligence-dashboard">
-      {/* Hero Banner */}
       <DigestHero
         sentiment={digest?.global_sentiment}
         generatedAt={digest?.generated_at}
       />
 
-      {/* Hot Narratives — full width */}
+      {/* Hot Narratives */}
       <HotNarratives narratives={digest?.hot_narratives || []} />
 
-      {/* Row: Political Compass + Geo Focus */}
-      <div className="dashboard__row-2">
-        <PoliticalCompass data={digest?.political_leaning} />
-        <GeoFocus data={digest?.geo_focus || []} />
-      </div>
-
-      {/* Sentiment Pulse — uses digest global_sentiment */}
+      {/* Sentiment Pulse */}
       <SentimentPulse externalData={digest?.global_sentiment} />
+
+      {/* Political Compass */}
+      <PoliticalCompass data={digest?.political_leaning} />
+
+      {/* Geo Focus */}
+      <GeoFocus data={digest?.geo_focus || []} />
+
+      {/* Underreported Stories */}
+      <UnderreportedStories data={digest?.underreported || []} />
 
       {/* Category Briefings — all 12 tabs */}
       <AIBriefing />
 
-      {/* Row: Underreported + Conflicting */}
-      <div className="dashboard__row-2">
-        <UnderreportedStories data={digest?.underreported || []} />
-        <ConflictingReports data={digest?.conflicting_reports || []} />
-      </div>
-
-      {/* Key Quotes — full width carousel */}
+      {/* Key Quotes */}
       <KeyQuotes quotes={digest?.key_quotes || []} />
+
+      {/* Conflicting Reports */}
+      <ConflictingReports data={digest?.conflicting_reports || []} />
 
       <div className="dashboard__footer">
         <span className="dashboard__footer-text">

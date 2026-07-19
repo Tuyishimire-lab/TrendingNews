@@ -955,14 +955,69 @@ body::before {
   --right-color:  #ef4444;
 }
 
+/* ─── Responsive CSS Grid Layout ─── */
 .intelligence-dashboard {
   max-width: var(--max-width);
   margin: 0 auto;
   padding: 1.5rem 2rem 4rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
+  display: grid;
+  gap: 1.25rem;
+
+  /* Mobile: single column */
+  grid-template-columns: 1fr;
+  grid-template-areas:
+    "hero"
+    "narratives"
+    "sentiment"
+    "political"
+    "geo"
+    "underreported"
+    "briefings"
+    "quotes"
+    "conflicting"
+    "footer";
 }
+
+/* Tablet: 2-column */
+@media (min-width: 768px) {
+  .intelligence-dashboard {
+    grid-template-columns: 1fr 1fr;
+    grid-template-areas:
+      "hero         hero"
+      "narratives   narratives"
+      "political    geo"
+      "sentiment    underreported"
+      "briefings    briefings"
+      "quotes       conflicting"
+      "footer       footer";
+  }
+}
+
+/* Desktop: 3-column asymmetric — maximum density */
+@media (min-width: 1100px) {
+  .intelligence-dashboard {
+    grid-template-columns: 1.85fr 1fr 1fr;
+    grid-template-areas:
+      "hero         hero          hero"
+      "narratives   narratives    sentiment"
+      "political    geo           underreported"
+      "briefings    briefings     quotes"
+      "conflicting  conflicting   conflicting"
+      "footer       footer        footer";
+  }
+}
+
+/* Assign grid areas to each panel class */
+.digest-hero       { grid-area: hero; }
+.hot-narratives    { grid-area: narratives; }
+.sentiment-panel   { grid-area: sentiment; }
+.political-panel   { grid-area: political; }
+.geo-panel         { grid-area: geo; }
+.underreported-panel { grid-area: underreported; }
+.briefings-panel   { grid-area: briefings; }
+.quotes-panel      { grid-area: quotes; }
+.conflicting-panel { grid-area: conflicting; }
+.dashboard__footer { grid-area: footer; }
 
 /* ─── Dashboard Panel (shared) ─── */
 .dashboard__panel {
@@ -1012,13 +1067,7 @@ body::before {
   margin-top: 0.2rem;
 }
 
-/* 2-column row */
-.dashboard__row-2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 1.5rem;
-}
-@media (max-width: 768px) { .dashboard__row-2 { grid-template-columns: 1fr; } }
+/* (dashboard__row-2 kept for backwards compat but layout is now CSS Grid) */
 
 /* Error state */
 .dashboard__error {
@@ -1470,4 +1519,33 @@ body::before {
   .conflicting-item__perspectives { grid-template-columns: 1fr; }
   .conflicting-perspective__divider { display: none; }
   .sentiment-layout { flex-direction: column; }
+}
+
+/* Desktop panel-specific tweaks */
+@media (min-width: 1100px) {
+  /* Narratives: show 2 cards per row in the 2/3-width zone */
+  .narratives-grid { grid-template-columns: repeat(2, 1fr); }
+
+  /* Side-column panels: fill full height of their grid row */
+  .sentiment-panel,
+  .quotes-panel {
+    display: flex;
+    flex-direction: column;
+  }
+  .sentiment-panel .sentiment-layout {
+    flex: 1;
+    align-items: center;
+  }
+
+  /* Compact padding for narrow column panels */
+  .political-panel,
+  .geo-panel,
+  .underreported-panel {
+    padding: 1.4rem;
+  }
+
+  /* Conflicting perspectives: always show side-by-side on desktop */
+  .conflicting-item__perspectives {
+    grid-template-columns: 1fr auto 1fr;
+  }
 }
