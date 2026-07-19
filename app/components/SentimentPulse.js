@@ -1,7 +1,6 @@
 'use client';
 
 export default function SentimentPulse({ externalData }) {
-  // Accept either external data from IntelligenceDashboard or fallback to nothing
   if (!externalData) return null;
 
   const positive = externalData.positive ?? 33;
@@ -10,18 +9,31 @@ export default function SentimentPulse({ externalData }) {
   const mood     = externalData.mood     || 'Neutral';
   const summary  = externalData.summary  || '';
 
-  // SVG ring chart
-  const radius       = 42;
-  const circumference = 2 * Math.PI * radius;
-  const posLen   = (positive / 100) * circumference;
-  const negLen   = (negative / 100) * circumference;
-  const neuLen   = (neutral  / 100) * circumference;
+  // Compact SVG ring (smaller radius)
+  const r  = 30;
+  const cx = 38;
+  const cy = 38;
+  const circ = 2 * Math.PI * r;
+  const posLen = (positive / 100) * circ;
+  const negLen = (negative / 100) * circ;
+  const neuLen = (neutral  / 100) * circ;
 
   const dominant = positive >= negative && positive >= neutral ? 'positive'
-    : negative >= positive && negative >= neutral ? 'negative'
+    : negative  >= positive && negative >= neutral  ? 'negative'
     : 'neutral';
 
+  const dominantColor =
+    dominant === 'positive' ? 'var(--positive)' :
+    dominant === 'negative' ? 'var(--negative)' :
+    'var(--neutral-color)';
+
   const dominantEmoji = dominant === 'positive' ? '😊' : dominant === 'negative' ? '😟' : '😐';
+
+  const bars = [
+    { label: 'Positive', pct: positive, color: 'var(--positive)' },
+    { label: 'Negative', pct: negative, color: 'var(--negative)' },
+    { label: 'Neutral',  pct: neutral,  color: 'var(--neutral-color)' },
+  ];
 
   return (
     <section className="dashboard__panel sentiment-panel">
@@ -29,65 +41,58 @@ export default function SentimentPulse({ externalData }) {
         <span className="dashboard__panel-icon">📊</span>
         <div>
           <h2 className="dashboard__panel-title">Sentiment Pulse</h2>
-          <p className="dashboard__panel-subtitle">Overall emotional tone of today&apos;s global news</p>
+          <p className="dashboard__panel-subtitle">Today&apos;s global news tone</p>
         </div>
       </div>
-      <div className="sentiment-layout">
-        {/* Ring chart */}
-        <div className="sentiment-ring-wrap">
-          <svg viewBox="0 0 90 90" className="sentiment-ring-svg">
+
+      {/* Compact ring + mood pill */}
+      <div className="sp-ring-row">
+        <div className="sp-ring-wrap">
+          <svg viewBox={`0 0 ${cx * 2} ${cy * 2}`} width="76" height="76">
             {/* Track */}
-            <circle cx="45" cy="45" r={radius} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth="8" />
-            {/* Positive */}
-            <circle cx="45" cy="45" r={radius}
-              fill="none" stroke="var(--positive)" strokeWidth="8"
-              strokeDasharray={`${posLen} ${circumference}`}
-              strokeDashoffset="0"
-              strokeLinecap="round"
-              transform="rotate(-90 45 45)"
+            <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="7" />
+            {/* Positive arc */}
+            <circle cx={cx} cy={cy} r={r}
+              fill="none" stroke="var(--positive)" strokeWidth="7"
+              strokeDasharray={`${posLen} ${circ}`} strokeDashoffset="0"
+              strokeLinecap="butt" transform={`rotate(-90 ${cx} ${cy})`}
             />
-            {/* Negative */}
-            <circle cx="45" cy="45" r={radius}
-              fill="none" stroke="var(--negative)" strokeWidth="8"
-              strokeDasharray={`${negLen} ${circumference}`}
-              strokeDashoffset={`${-posLen}`}
-              strokeLinecap="round"
-              transform="rotate(-90 45 45)"
+            {/* Negative arc */}
+            <circle cx={cx} cy={cy} r={r}
+              fill="none" stroke="var(--negative)" strokeWidth="7"
+              strokeDasharray={`${negLen} ${circ}`} strokeDashoffset={`${-posLen}`}
+              strokeLinecap="butt" transform={`rotate(-90 ${cx} ${cy})`}
             />
-            {/* Neutral */}
-            <circle cx="45" cy="45" r={radius}
-              fill="none" stroke="var(--neutral-color)" strokeWidth="8"
-              strokeDasharray={`${neuLen} ${circumference}`}
-              strokeDashoffset={`${-(posLen + negLen)}`}
-              strokeLinecap="round"
-              transform="rotate(-90 45 45)"
+            {/* Neutral arc */}
+            <circle cx={cx} cy={cy} r={r}
+              fill="none" stroke="var(--neutral-color)" strokeWidth="7"
+              strokeDasharray={`${neuLen} ${circ}`} strokeDashoffset={`${-(posLen + negLen)}`}
+              strokeLinecap="butt" transform={`rotate(-90 ${cx} ${cy})`}
             />
-            <text x="45" y="42" textAnchor="middle" fontSize="16" fill="white">{dominantEmoji}</text>
-            <text x="45" y="55" textAnchor="middle" fontSize="7" fill="rgba(255,255,255,0.5)">{mood}</text>
+            {/* Center emoji */}
+            <text x={cx} y={cy + 2} textAnchor="middle" dominantBaseline="middle"
+              fontSize="13" fill="white">{dominantEmoji}</text>
           </svg>
         </div>
-
-        {/* Legend + summary */}
-        <div className="sentiment-details">
-          <div className="sentiment-legend">
-            <div className="sentiment-legend__item">
-              <span className="sentiment-legend__dot" style={{ background: 'var(--positive)' }} />
-              <span>Positive</span>
-              <strong>{positive}%</strong>
-            </div>
-            <div className="sentiment-legend__item">
-              <span className="sentiment-legend__dot" style={{ background: 'var(--negative)' }} />
-              <span>Negative</span>
-              <strong>{negative}%</strong>
-            </div>
-            <div className="sentiment-legend__item">
-              <span className="sentiment-legend__dot" style={{ background: 'var(--neutral-color)' }} />
-              <span>Neutral</span>
-              <strong>{neutral}%</strong>
-            </div>
-          </div>
-          {summary && <p className="sentiment-summary">{summary}</p>}
+        <div className="sp-mood-col">
+          <span className="sp-mood-pill" style={{ background: `${dominantColor}22`, borderColor: `${dominantColor}55`, color: dominantColor }}>
+            ⚡ {mood}
+          </span>
+          {summary && <p className="sp-summary">{summary}</p>}
         </div>
+      </div>
+
+      {/* Horizontal bar chart */}
+      <div className="sp-bars">
+        {bars.map(({ label, pct, color }) => (
+          <div key={label} className="sp-bar-row">
+            <span className="sp-bar-label">{label}</span>
+            <div className="sp-bar-track">
+              <div className="sp-bar-fill" style={{ width: `${pct}%`, background: color }} />
+            </div>
+            <span className="sp-bar-pct" style={{ color }}>{pct}%</span>
+          </div>
+        ))}
       </div>
     </section>
   );
