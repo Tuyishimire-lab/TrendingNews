@@ -368,7 +368,7 @@ async function handleFetch() {
 Respond ONLY with a valid JSON array (no markdown, no code fences). Each element must have:
 {
   "index": 1,
-  "summary": "A concise 1-2 sentence summary.",
+  "summary": "A detailed 3-4 sentence paragraph highlighting key facts, background context, and overall significance.",
   "sentiment": "positive" | "negative" | "neutral",
   "confidence": 0.85,
   "tags": ["tag1", "tag2", "tag3"]

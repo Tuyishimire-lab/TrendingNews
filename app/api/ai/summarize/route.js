@@ -43,7 +43,7 @@ export async function POST(request) {
 
 Respond ONLY with valid JSON (no markdown, no code fences):
 {
-  "summary": "A concise 2-3 sentence summary capturing key facts and significance.",
+  "summary": "A comprehensive and detailed 3-5 sentence summary capturing key facts, background context, and overall significance.",
   "keyTakeaways": [
     "First key takeaway",
     "Second key takeaway",
