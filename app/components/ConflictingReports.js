@@ -3,30 +3,30 @@
 export default function ConflictingReports({ data }) {
   if (!data?.length) return null;
 
+  // In horizontal rail, show each conflicting topic as its own card-like item
+  // stacked vertically within the wider rail card
   return (
-    <section className="dashboard__panel conflicting-panel">
+    <section className="dashboard__panel conflicting-panel rail-panel">
       <div className="dashboard__panel-header">
         <span className="dashboard__panel-icon">⚡</span>
         <div>
           <h2 className="dashboard__panel-title">Conflicting Reports</h2>
-          <p className="dashboard__panel-subtitle">Stories where sources present opposing narratives</p>
+          <p className="dashboard__panel-subtitle">Opposing narratives on same events</p>
         </div>
       </div>
       <div className="conflicting-list">
         {data.map((report, i) => (
-          <div key={i} className="conflicting-item" style={{ animationDelay: `${i * 120}ms` }}>
+          <div key={i} className="conflicting-item">
             <h3 className="conflicting-item__topic">{report.topic}</h3>
-            <div className="conflicting-item__perspectives">
-              <div className="conflicting-perspective conflicting-perspective--a">
-                <span className="conflicting-perspective__label">Perspective A</span>
-                <p className="conflicting-perspective__text">{report.perspective_a}</p>
+            <div className="conflicting-stacked">
+              <div className="cstack cstack--a">
+                <span className="cstack__label">Perspective A</span>
+                <p className="cstack__text">{report.perspective_a}</p>
               </div>
-              <div className="conflicting-perspective__divider">
-                <span className="conflicting-perspective__vs">VS</span>
-              </div>
-              <div className="conflicting-perspective conflicting-perspective--b">
-                <span className="conflicting-perspective__label">Perspective B</span>
-                <p className="conflicting-perspective__text">{report.perspective_b}</p>
+              <div className="cstack__vs">VS</div>
+              <div className="cstack cstack--b">
+                <span className="cstack__label">Perspective B</span>
+                <p className="cstack__text">{report.perspective_b}</p>
               </div>
             </div>
           </div>

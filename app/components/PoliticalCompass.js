@@ -49,7 +49,7 @@ export default function PoliticalCompass({ data }) {
   const evidence = Array.isArray(data.evidence) ? data.evidence : [];
 
   return (
-    <section className="dashboard__panel political-panel">
+    <section className="dashboard__panel political-panel rail-panel">
       <div className="dashboard__panel-header">
         <span className="dashboard__panel-icon">⚖️</span>
         <div>

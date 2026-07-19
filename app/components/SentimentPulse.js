@@ -36,7 +36,7 @@ export default function SentimentPulse({ externalData }) {
   ];
 
   return (
-    <section className="dashboard__panel sentiment-panel">
+    <section className="dashboard__panel sentiment-panel rail-panel">
       <div className="dashboard__panel-header">
         <span className="dashboard__panel-icon">📊</span>
         <div>

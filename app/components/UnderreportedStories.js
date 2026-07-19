@@ -10,7 +10,7 @@ export default function UnderreportedStories({ data }) {
   if (!data?.length) return null;
 
   return (
-    <section className="dashboard__panel underreported-panel">
+    <section className="dashboard__panel underreported-panel rail-panel">
       <div className="dashboard__panel-header">
         <span className="dashboard__panel-icon">🔍</span>
         <div>

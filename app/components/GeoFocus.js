@@ -10,7 +10,7 @@ export default function GeoFocus({ data }) {
   const maxCount = Math.max(...data.map((r) => r.story_count || 1), 1);
 
   return (
-    <section className="dashboard__panel geo-panel">
+    <section className="dashboard__panel geo-panel rail-panel">
       <div className="dashboard__panel-header">
         <span className="dashboard__panel-icon">🌍</span>
         <div>
