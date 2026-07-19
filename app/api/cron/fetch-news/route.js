@@ -199,11 +199,63 @@ async function fetchGuardian() {
   return allArticles;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   Normalizer — Unified article schema
-   ═══════════════════════════════════════════════════════════ */
+function correctCategory(title, description, currentCategory) {
+  const text = `${title || ''} ${description || ''}`.toLowerCase();
+
+  // 1. Sports Indicators
+  const sportsWords = [
+    'wnba', 'nba', 'nfl', 'mlb', 'nhl', 'premier league', 'champions league', 
+    'olympics', 'olympic', 'wimbledon', 'athlete', 'stadium', 'football', 
+    'soccer', 'basketball', 'baseball', 'tennis', 'hockey', 'golf', 'boxing', 
+    'ufc', 'formula 1', 'grand prix', 'medalist', 'championship', 'tournament',
+    'quarterback', 'striker', 'touchdown', 'slam dunk', 'home run'
+  ];
+  const sportsPatterns = [
+    /\b(beat|beats|defeat|defeats|scores|score|won|wins|lost|loses|victory|draw|match|game|vs)\b/i,
+    /\b\d{1,3}-\d{1,3}\b/ // matches scores like "101-93" or "2-1"
+  ];
+
+  const hasSportsWord = sportsWords.some(w => text.includes(w));
+  const hasSportsPattern = sportsPatterns.some(p => p.test(text));
+
+  // If it has sports words, or sports patterns + names/teams, classify as sports
+  if (hasSportsWord || (hasSportsPattern && currentCategory !== 'politics' && currentCategory !== 'business')) {
+    return 'sports';
+  }
+
+  // 2. Business / Finance Indicators
+  const businessWords = [
+    'stocks', 'stock market', 'nasdaq', 'dow jones', 'wall street', 'merger', 
+    'acquisition', 'revenue', 'profits', 'q1 profit', 'q2 profit', 'q3 profit', 'q4 profit',
+    'interest rates', 'inflation', 'gdp', 'recession', 'startup', 'vc funding',
+    'layoffs', 'ceo', 'cfo', 'fed rate', 'federal reserve'
+  ];
+  if (businessWords.some(w => text.includes(w)) && currentCategory !== 'politics') {
+    return 'business';
+  }
+
+  // 3. Tech Indicators
+  const techWords = [
+    'artificial intelligence', 'chatgpt', 'openai', 'nvidia', 'semiconductor', 
+    'microchip', 'cybersecurity', 'ransomware', 'cryptocurrency', 'bitcoin', 
+    'ethereum', 'blockchain', 'metaverse', 'virtual reality', 'augmented reality',
+    'software update', 'macos', 'windows 11', 'ios 18', 'android 15'
+  ];
+  const techPatterns = [
+    /\b(ai|gpt-4|gpt-5|claude|gemini|llm|vr|ar|crypto)\b/i
+  ];
+  if (techWords.some(w => text.includes(w)) || techPatterns.some(p => p.test(text))) {
+    return 'technology';
+  }
+
+  return currentCategory;
+}
 
 function normalizeArticle(raw, source, category) {
+  const title = source === 'guardian' ? (raw.fields?.headline || raw.webTitle) : raw.title;
+  const desc = source === 'guardian' ? raw.fields?.trailText : raw.description;
+  const finalCategory = correctCategory(title, desc, category);
+
   switch (source) {
     case 'newsdata':
       return {
@@ -216,7 +268,7 @@ function normalizeArticle(raw, source, category) {
         source_icon: raw.source_icon || null,
         source_id: raw.source_id || null,
         pub_date: raw.pubDate || null,
-        category,
+        category: finalCategory,
         country: Array.isArray(raw.country) ? raw.country : null,
         language: raw.language || 'en',
         fetched_at: new Date().toISOString(),
@@ -233,7 +285,7 @@ function normalizeArticle(raw, source, category) {
         source_icon: null,
         source_id: null,
         pub_date: raw.published ? new Date(raw.published).toISOString() : null,
-        category,
+        category: finalCategory,
         country: null,
         language: raw.language || 'en',
         fetched_at: new Date().toISOString(),
@@ -250,7 +302,7 @@ function normalizeArticle(raw, source, category) {
         source_icon: 'https://assets.guim.co.uk/images/favicons/451963ac2e23633472bf48e2856d3f04/favicon-32x32.png',
         source_id: 'the-guardian',
         pub_date: raw.webPublicationDate || null,
-        category,
+        category: finalCategory,
         country: ['gb'],
         language: 'en',
         fetched_at: new Date().toISOString(),
@@ -422,7 +474,7 @@ async function handleFetch() {
               messages: [
                 {
                   role: 'system',
-                  content: `You are a news analysis AI. For each article, provide a summary, sentiment, and tags.
+                  content: `You are a news analysis AI. For each article, provide a summary, sentiment, tags, and category.
 
 Respond ONLY with a valid JSON array (no markdown, no code fences). Each element must have:
 {
@@ -431,14 +483,17 @@ Respond ONLY with a valid JSON array (no markdown, no code fences). Each element
   "sentiment": "positive" | "negative" | "neutral",
   "confidence": 0.85,
   "tags": ["tag1", "tag2", "tag3"],
-  "importance": 8
+  "importance": 8,
+  "category": "sports"
 }
-Note: "importance" is an integer from 1 to 10 rating the news value, impact, or significance of the article. Respond ONLY with the JSON array.`,
+Note: "importance" is an integer from 1 to 10 rating the news value/impact.
+Note: "category" must be one of: top, business, technology, science, health, sports, entertainment, politics, world, environment, food, tourism. Use this to correct category classification if the input article is in the wrong category.
+Respond ONLY with the JSON array.`,
                 },
                 { role: 'user', content: `Analyze these ${batch.length} articles:\n\n${articlesBlock}` },
               ],
               temperature: 0.2,
-              max_tokens: 1200,
+              max_tokens: 1500,
             }),
           });
 
@@ -452,6 +507,9 @@ Note: "importance" is an integer from 1 to 10 rating the news value, impact, or 
               for (const r of results) {
                 const idx = (r.index || 1) - 1;
                 if (idx >= 0 && idx < batch.length) {
+                  const validCats = ['top', 'business', 'technology', 'science', 'health', 'sports', 'entertainment', 'politics', 'world', 'environment', 'food', 'tourism'];
+                  const finalCat = r.category && validCats.includes(r.category) ? r.category : batch[idx].category;
+                  
                   await supabase
                     .from('articles')
                     .update({
@@ -461,6 +519,7 @@ Note: "importance" is an integer from 1 to 10 rating the news value, impact, or 
                       ai_tags: Array.isArray(r.tags) ? r.tags.slice(0, 5) : [],
                       ai_processed: true,
                       ai_importance_score: typeof r.importance === 'number' ? r.importance : 5,
+                      category: finalCat,
                     })
                     .eq('id', batch[idx].id);
                   aiProcessed++;
