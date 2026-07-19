@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 const SUGGESTIONS = [
   "What's trending today?",
@@ -9,14 +9,15 @@ const SUGGESTIONS = [
   "What's happening in politics?",
 ];
 
-export default function AIChatPanel({ isOpen, onClose }) {
+export default function AIChatPanel({ isOpen, onClose, initialQuery }) {
   const [messages, setMessages] = useState([
-    { role: 'assistant', content: 'Hey! 👋 I\'m NovaPulse AI. Ask me anything about today\'s news — I\'ll answer based on real articles in our database.' },
+    { role: 'assistant', content: 'Hey! 👋 I\'m NovaPulse AI. Ask me anything about today\'s news — I\'ll analyse the latest articles and intelligence for you.' },
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const sentInitialRef = useRef(false);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -25,6 +26,15 @@ export default function AIChatPanel({ isOpen, onClose }) {
   useEffect(() => {
     if (isOpen) inputRef.current?.focus();
   }, [isOpen]);
+
+  // Auto-send initialQuery when panel opens with a pre-filled query
+  useEffect(() => {
+    if (isOpen && initialQuery && !sentInitialRef.current) {
+      sentInitialRef.current = true;
+      sendMessage(initialQuery);
+    }
+    if (!isOpen) sentInitialRef.current = false;
+  }, [isOpen, initialQuery]);
 
   const sendMessage = async (text) => {
     const userMsg = text || input.trim();

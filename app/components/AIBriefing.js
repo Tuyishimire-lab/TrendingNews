@@ -1,72 +1,149 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
-export default function AIBriefing({ category }) {
-  const [briefing, setBriefing] = useState(null);
-  const [loading, setLoading] = useState(true);
+const CATEGORIES = [
+  { id: 'top', label: 'Top', emoji: '📰' },
+  { id: 'world', label: 'World', emoji: '🌐' },
+  { id: 'politics', label: 'Politics', emoji: '🏛️' },
+  { id: 'technology', label: 'Tech', emoji: '💻' },
+  { id: 'business', label: 'Business', emoji: '💼' },
+  { id: 'science', label: 'Science', emoji: '🔬' },
+  { id: 'health', label: 'Health', emoji: '🏥' },
+  { id: 'sports', label: 'Sports', emoji: '⚽' },
+  { id: 'entertainment', label: 'Entertainment', emoji: '🎬' },
+  { id: 'environment', label: 'Environment', emoji: '🌿' },
+  { id: 'food', label: 'Food', emoji: '🍽️' },
+  { id: 'tourism', label: 'Tourism', emoji: '✈️' },
+];
 
-  useEffect(() => {
-    setLoading(true);
-    setBriefing(null);
-    fetch(`/api/ai/briefing?category=${category}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setBriefing(data);
-        setLoading(false);
-      })
-      .catch(() => setLoading(false));
-  }, [category]);
+const MOOD_COLORS = {
+  Optimistic: '#10b981', Positive: '#10b981', Progressive: '#10b981',
+  Calm: '#3b82f6', Neutral: '#6b7280', Balanced: '#6b7280',
+  Tense: '#f59e0b', Volatile: '#ef4444', Cautious: '#f59e0b',
+  Alarming: '#ef4444', Crisis: '#ef4444', Negative: '#ef4444',
+};
 
+function getMoodColor(mood) {
+  if (!mood) return '#6366f1';
+  for (const [key, color] of Object.entries(MOOD_COLORS)) {
+    if (mood.toLowerCase().includes(key.toLowerCase())) return color;
+  }
+  return '#6366f1';
+}
+
+function BriefingContent({ briefing, loading, category }) {
   if (loading) {
     return (
-      <div className="ai-briefing ai-briefing--loading">
-        <div className="ai-briefing__header">
-          <span className="ai-briefing__icon">🧠</span>
-          <span className="ai-briefing__title">AI Daily Briefing</span>
-        </div>
-        <div className="ai-briefing__shimmer">
-          <div className="skeleton__line skeleton__line--title" />
-          <div className="skeleton__line skeleton__line--desc" />
-          <div className="skeleton__line skeleton__line--desc-2" />
-        </div>
+      <div className="briefing-content briefing-content--loading">
+        <div className="skel skel--sm" />
+        <div className="skel skel--md" style={{ marginTop: '0.75rem' }} />
+        <div className="skel skel--md" />
+        <div className="skel skel--sm" style={{ marginTop: '0.5rem' }} />
       </div>
     );
   }
 
-  if (!briefing?.briefing) return null;
+  if (!briefing?.briefing) {
+    return (
+      <div className="briefing-content briefing-content--empty">
+        <p>No briefing available for {category} yet. Click the refresh button to generate one.</p>
+      </div>
+    );
+  }
+
+  const moodColor = getMoodColor(briefing.mood);
 
   return (
-    <div className="ai-briefing">
-      <div className="ai-briefing__glow" />
-      <div className="ai-briefing__header">
-        <div className="ai-briefing__label">
-          <span className="ai-briefing__icon">🧠</span>
-          <span className="ai-briefing__title">AI Daily Briefing</span>
-          <span className="ai-briefing__category">{category}</span>
-        </div>
+    <div className="briefing-content">
+      <div className="briefing-content__header">
         {briefing.mood && (
-          <span className="ai-briefing__mood">
+          <span className="briefing-mood" style={{ color: moodColor, borderColor: `${moodColor}30` }}>
             ⚡ {briefing.mood}
           </span>
         )}
+        {briefing.generatedAt && (
+          <span className="briefing-time">
+            {new Date(briefing.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
       </div>
-      <p className="ai-briefing__text">{briefing.briefing}</p>
+      <p className="briefing-content__text">{briefing.briefing}</p>
       {briefing.keyPoints?.length > 0 && (
-        <ul className="ai-briefing__points">
+        <ul className="briefing-content__points">
           {briefing.keyPoints.map((point, i) => (
             <li key={i}>
-              <span className="ai-briefing__bullet">→</span>
+              <span className="briefing-content__bullet">→</span>
               {point}
             </li>
           ))}
         </ul>
       )}
-      {briefing.generatedAt && (
-        <span className="ai-briefing__time">
-          Generated {new Date(briefing.generatedAt).toLocaleTimeString()}
-        </span>
-      )}
     </div>
+  );
+}
+
+export default function AIBriefing() {
+  const [activeTab, setActiveTab] = useState('top');
+  const [briefings, setBriefings] = useState({});
+  const [loading, setLoading] = useState(false);
+
+  const fetchBriefing = useCallback(async (category) => {
+    if (briefings[category]) return; // Already loaded
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/ai/briefing?category=${category}`);
+      const data = await res.json();
+      setBriefings((prev) => ({ ...prev, [category]: data }));
+    } catch {
+      setBriefings((prev) => ({ ...prev, [category]: null }));
+    }
+    setLoading(false);
+  }, [briefings]);
+
+  // Load first tab on mount
+  useEffect(() => {
+    fetchBriefing('top');
+  }, []);
+
+  const handleTabChange = (catId) => {
+    setActiveTab(catId);
+    fetchBriefing(catId);
+  };
+
+  const activeCat = CATEGORIES.find((c) => c.id === activeTab);
+
+  return (
+    <section className="dashboard__panel briefings-panel">
+      <div className="dashboard__panel-header">
+        <span className="dashboard__panel-icon">🧠</span>
+        <div>
+          <h2 className="dashboard__panel-title">AI Daily Briefings</h2>
+          <p className="dashboard__panel-subtitle">AI-synthesized briefing for every news category</p>
+        </div>
+      </div>
+
+      {/* Tab bar — scrollable */}
+      <div className="briefing-tabs">
+        {CATEGORIES.map((cat) => (
+          <button
+            key={cat.id}
+            className={`briefing-tab ${activeTab === cat.id ? 'briefing-tab--active' : ''}`}
+            onClick={() => handleTabChange(cat.id)}
+          >
+            <span className="briefing-tab__emoji">{cat.emoji}</span>
+            <span className="briefing-tab__label">{cat.label}</span>
+            {briefings[cat.id] && <span className="briefing-tab__dot" />}
+          </button>
+        ))}
+      </div>
+
+      {/* Active briefing */}
+      <BriefingContent
+        briefing={briefings[activeTab]}
+        loading={loading && !briefings[activeTab]}
+        category={activeCat?.label || activeTab}
+      />
+    </section>
   );
 }

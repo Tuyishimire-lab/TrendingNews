@@ -91,6 +91,27 @@ CREATE POLICY IF NOT EXISTS "Service full briefings" ON briefings FOR ALL USING 
 CREATE POLICY IF NOT EXISTS "Service full trending" ON trending_topics FOR ALL USING (true) WITH CHECK (true);
 
 -- ═══════════════════════════════════════════════════════════
+-- AI Daily Digest (synthesized intelligence — one row per day)
+-- ═══════════════════════════════════════════════════════════
+
+CREATE TABLE IF NOT EXISTS daily_digest (
+  id                  BIGSERIAL PRIMARY KEY,
+  date                DATE NOT NULL UNIQUE,
+  hot_narratives      JSONB,    -- [{title, summary, categories[], strength}]
+  political_leaning   JSONB,    -- {lean, score, evidence[], breakdown:{left,center,right}, analysis}
+  geo_focus           JSONB,    -- [{region, story_count, top_story, emoji}]
+  underreported       JSONB,    -- [{title, why_important, category}]
+  conflicting_reports JSONB,    -- [{topic, perspective_a, perspective_b}]
+  key_quotes          JSONB,    -- [{quote, speaker, context, category}]
+  global_sentiment    JSONB,    -- {positive, negative, neutral, mood, summary}
+  generated_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
+ALTER TABLE daily_digest ENABLE ROW LEVEL SECURITY;
+CREATE POLICY IF NOT EXISTS "Public read digest"  ON daily_digest FOR SELECT USING (true);
+CREATE POLICY IF NOT EXISTS "Service full digest" ON daily_digest FOR ALL   USING (true) WITH CHECK (true);
+
+-- ═══════════════════════════════════════════════════════════
 -- Migration: Add AI columns if upgrading from old schema
 -- ═══════════════════════════════════════════════════════════
 -- Run these if you already have the articles table:
@@ -102,3 +123,8 @@ CREATE POLICY IF NOT EXISTS "Service full trending" ON trending_topics FOR ALL U
 -- ALTER TABLE articles ADD COLUMN IF NOT EXISTS ai_processed BOOLEAN DEFAULT FALSE;
 -- CREATE INDEX IF NOT EXISTS idx_articles_ai_processed ON articles(ai_processed);
 -- CREATE INDEX IF NOT EXISTS idx_articles_ai_sentiment ON articles(ai_sentiment);
+-- ALTER TABLE articles ADD COLUMN IF NOT EXISTS ai_importance_score INTEGER;
+-- CREATE INDEX IF NOT EXISTS idx_articles_ai_importance ON articles(ai_importance_score DESC NULLS LAST);
+--
+-- New daily_digest table:
+-- (Run the CREATE TABLE IF NOT EXISTS daily_digest block above)

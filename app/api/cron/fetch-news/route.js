@@ -673,6 +673,18 @@ Return 8-10 topics, ordered by relevance/frequency.`,
       console.error('[AI] Trending error:', err.message);
     }
 
+    // ═══════════════════════════════════════════════════════════
+    // PHASE 3: Global AI Synthesis (daily_digest)
+    // ═══════════════════════════════════════════════════════════
+    console.log('[AI] Running global intelligence synthesis...');
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+      await fetch(`${baseUrl}/api/ai/synthesize`, { method: 'POST' });
+      console.log('[AI] Synthesis triggered.');
+    } catch (err) {
+      console.error('[AI] Synthesis error:', err.message);
+    }
+
     console.log(`[AI] Complete! Processed ${aiProcessed} articles.`);
   } else {
     console.warn('[AI] No GROQ_API_KEY, skipping AI processing.');
